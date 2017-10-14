@@ -1,0 +1,255 @@
+# Directory structure
+Note: This will only list the files relevant to you. You may disregard any others.
+
+├── wireroute.cpp
+    This is where you'll implement your wirerouter.
+
+├── wireroute.h
+    This is the header for your implementation. You'll want to eventually edit the
+    wire_t struct here to your liking.
+
+├── validate.py
+
+├── inputs
+    This holds subdirectories for the several test grids that you can run your code on.
+│   ├── timeinput
+        This one contains the 3 tests that are benchmarked in the 'Grading' section
+        of the website writeup. These are your main benchmarks, but feel free to use
+        the ones in the other directories for debugging.
+│   ├── testinput
+│   ├── problemsize
+
+├── job_outputs
+    When you run your code on the Phi, the job output files will show up here. This is
+    more thoroughly explained below
+
+├── file_outputs
+    When you run your code on the Phi, the txt output files (costs and wire routes) will 
+    show up here. This is more thoroughly explained below
+
+├── job_outputs_submit
+    Explained in website writeup.
+
+├── file_outputs_submit
+    Explained in website writeup.
+
+├── scripts
+│   ├── batch_generate.sh
+        You will want to edit the 'inputs' and 'threads' parameters in this file.
+        This is more thoroughly explained below.
+
+├── grapher
+│   ├── WireGrapher.java
+        The Java code you will run with your outputs, explained in the 'Implementation Details'
+        section of the website handout.
+
+
+IF YOU HAVEN'T READ THE WRITEUP ON THE WEBSITE, TURN AROUND AND DO THAT FIRST.
+
+
+# Getting started
+
+You'll be writing your code in the wireroute.cpp and wireroute.h files. Your main implementation
+will be in wireroute.cpp and you'll eventually need to define a struct called wire_t that is
+defined in wireroute.h.
+
+
+
+
+
+# Starter code
+
+In wireroute.cpp, the only code that you're concerned with at the start is the code in the main
+function. Most of the tedious parts of the executable, such as taking in arguments from the
+commandline, are handled for you.
+
+The first thing you'll need to do is generate your wires array. In the main function, 
+find the wires array we allocated for you and look right below it. There's a 
+loop that's parsing out the coordinates of each wire. In that loop, store x1, y1, x2, and y2
+into your wires array. You'll need to define the wire_t struct in wireroute.h before doing this.
+
+Next, look right below the wires array initialization. There is a costs array that you'll want
+to use in your algorithm. If you want to initialize it in any way before implementing your
+algorithm, feel free to.
+
+Next, look below the costs array intialization. You'll see the following chunk
+of code:
+
+#ifdef RUN_MIC /* Use RUN_MIC to distinguish between the target of compilation */
+
+  /* This pragma means we want the code in the following block be executed in 
+   * Xeon Phi.
+   */
+#pragma offload target(mic) \
+  inout(wires: length(num_of_wires) INOUT)    \
+  inout(costs: length(dim_x*dim_y) INOUT)
+#endif
+  {
+    /* Implement the wire routing algorithm here
+     * Feel free to structure the algorithm into different functions
+     * Don't use global variables.
+     * Use OpenMP to parallelize the algorithm. */
+  }
+
+Don't be scared off by this! Up until these lines of code, your code was running on a 
+six-core Xeon machine. To actually run on the Xeon Phi, you have to offload your code
+using this syntax. That's what this is doing. You only need to know a couple things about 
+this setup:
+
+1.) Any memory allocated before offloading that you want to read from/write to on
+    the Phi's should be passed with inout() as done above with wires and costs. 
+    There is indeed some overhead to having more inouts passed in. It's something
+    you may want to consider when optimizing your algorithm.
+
+2.) The brackets following the endif will be where you write your code (as indicated
+    by the comments). Feel free to call helper functions from within this, they will
+    still be run on the Phi without issue.
+
+Even if you're running your code on the CPU or sequentially, you can still write
+your code within these brackets and it'll work just fine.
+
+Another thing you'll notice in the code are the timing measurements embedded throughout
+the main function. As you're debugging your algorithm and trying to maximize speedup, 
+you're encouraged to embed more timing measurements. This can be helpful when trying
+to figure out which parts of your implementation take the longest. Any discoveries
+found through timing measurements are more than welcome in your writeup.
+
+Finally, when you're done with your algorithm you will need to output the costs array
+and wires in the format specified in the writeup. We handled a lot the file I/O 
+for you in a commented chunk of code in the bottom of your main function. When
+you're ready to write your outputs, uncomment the chunk of code and fill in the
+blanks where you actually write your data to the files.  We would
+have done this for you, but this is dependent on how you define wire_t. 
+
+To fill in the blanks, we recommending using fprintf as some of our starter code
+does. It is quite literally printf except the first argument is the file you're
+printing to.
+
+
+# Running your code
+
+When in the 'code' directory (where this README is), there are three commands you will
+need to run:
+
+1.) make
+3.) make submit
+3.) make cpu
+4.) make clean
+
+Let's go over each of these:
+
+# Running on the CPU
+
+Although you'll be parallelizing your algorithm and timing it on the Phi, you will
+need to take some time to write a sequential version of it first. When writing this,
+it will probably be easier to run and test it for correctness on the CPU first.
+If you run:
+
+make cpu
+
+then, if your code compiles, you'll be able to run it exactly how the website writeup
+says you can with the following format:
+
+./wireroute -f FILENAME -n NUM_THREADS [-p P] [-i N_ITERS] 
+
+You'll need to pass the arguments in yourself for testing, passing in the test files
+as arguments from the inputs directory.
+
+# Running on the Xeon Phi
+
+Running on the Phi is a very different process. 
+
+For setting this up, you will need to edit 'scripts/batch_generate.sh'. At the top 
+of that file are the following two lines:
+
+threads=()
+inputs=()
+
+When you want to pick which input files to run your code with and how many threads
+to parallelize with, you should set the values in this file. The input files should
+be paths relative to the inputs directory. When you download this starter code,
+these values will be set to:
+
+threads=(64 128 240) 
+inputs=(timeinput/easy_4096.txt) 
+
+The input file paths are given relative to the inputs directory, so for example,
+the first file listed is in inputs/time_input/easy_4096.txt. When threads are listed
+like this, then each input file listed will be run with each thread count. 
+In the case above, easy_4096.txt will be run 3 times: once with 64 threads, once with
+128 threads, and once with 240 threads. You can adjust the threads and inputs
+as you please based on what you want to run.
+
+Please note: While you can submit more than one input file at a time, in our 
+experience we often experienced a 'mic' error. Don't worry about this, we just
+recommend that you run with one input file at a time with the thread inputs above.
+If you want to change the input file, just update the value to the desired file.
+
+When things are set up like this, you can actually run your code.
+
+To compile run the following command:
+
+make
+
+When things are compiled, you'll run your code by running the following command:
+
+make submit
+
+Although it may look like it, this command does NOT actually compile anything. When
+we want to run code on the Phis, we generate a job for our code to run and we 
+submit that job to a running queue. When you run this, it will finish immediately 
+and you'll have to wait for the jobs to run on the Phis to see the results.
+
+If you want to see the jobs list for the Xeon Phis, run the following command:
+
+qstat
+
+You'll likely be doing this a lot. If your code never finishes or takes a very long
+time, you'll see it stuck in the queue. If there is a job that is taking too long,
+please delete it with the following command:
+
+qdel JOB_ID
+
+where JOB_ID is the Job ID that you can see from the output of qstat.
+
+The way your directory is set up, when your code is finished running, the job results will
+be put into the 'job_outputs' directory. These job results simply show everything from your
+print statements along with the number of cache misses your program execution had.
+As specified on the website writeup, these are what you'll be submitting with the
+benchmark files and thread counts.
+
+What about the output files that you will create with your resulting wire paths?
+Those will show up in the 'file_outputs' directory.
+
+There's one more command you will need to know to run:
+
+make clean
+
+This will delete all binaries and all files in the 'job_outputs' and 'file_outputs'
+directory. Everytime you want to run your code on the Phis, try to run your code
+in the following sequence:
+
+make clean
+make
+make submit
+
+# Important notes about running.
+
+Running 'make' and 'make cpu' uses different compilers. Because of this, when you
+want to transition from running on the CPU to the Phi (or vice versa), always run
+'make clean'. This will clear all binaries and allow you to compile from a fresh slate.
+
+# Validating your outputs
+
+In order to ensure correctness (i.e. that your cost array outputs matches up with
+your wire path outputs), run the following command:
+
+python validate.py -r ROUTE -c COST
+
+where ROUTE is your wire path output file and COST is your cost array output file.
+This script will tell you if the outputs match up correctly. We will be using 
+this during grading.
+
+Good luck! If there are any issues with running, don't hesitate to ask on Piazza.
+
+-Amolak

@@ -1,0 +1,26 @@
+# Directory structure
+├── code
+    Directory with code and tools to run on Xeon Phis. 
+    Read README within this directory to get started there.
+├── examples
+    Examples for OpenMP
+│   ├── hello.c
+│   ├── loop.c
+│   ├── Makefile
+│   ├── README
+│   └── sqrt.c
+├── README
+    This file
+└── tutorials
+    └── openmp.pdf
+        OpenMP tutorial
+
+MAKE SURE YOU'VE READ THE WRITEUP ON THE WEBSITE BEFORE STARTING.
+
+# How to get started
+- If you want to run OpenMP examples, go to the 'examples' directory.
+- If you want an OpenMP reference (and you likely will), refer to the PDF in the 'tutorials' directory.
+- If you want to get started on your wirerouter, go to the 'code' directory and read its README. 
+  It will have all the instructions on running your code. 
+
+NOW READ THE README IN THE CODE DIRECTORY TO FIGURE OUT HOW TO WRITE AND RUN YOUR CODE.
