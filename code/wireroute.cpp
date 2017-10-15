@@ -12,7 +12,8 @@
 #include <assert.h>
 #include <omp.h>
 #include "mic.h"
-
+#include <limits>
+#include <random>
 #define BUFSIZE 1024
 
 #define MIN(X, Y) (((X) < (Y)) ? (X) : (Y))
@@ -72,63 +73,120 @@ int *max_x(int *c1, int *c2) {
 	else return c1;
 }
 
-void increment_cost_x(cost_t *costs, int x1, int x2, int y) {
+int increment_cost_x(cost_t *costs, int x1, int x2, int y, int dim_x, bool write, int sum) {
+	int max_cost = 0;
 	int multiplier = 1;
 	if (x1 > x2) multiplier = -1;
 	while (x1 != x2) {
-		costs[y][x1] += 1;
+		if (write) costs[y*dim_x + x1] += sum;
+		int val = costs[y*dim_x + x1];
+		if (val > max_cost) max_cost = val;
 		x1 += multiplier;
 	}
+	return max_cost;
 }
 
-void increment_cost_y(cost_t *costs, int y1, int y2, int x, int sum) {
+int increment_cost_y(cost_t *costs, int y1, int y2, int x, int dim_x, bool write, int sum) {
+	int max_cost = 0;
 	int multiplier = 1;
 	if (y1 > y2) multiplier = -1;
 	while (y1 != y2) {
-		costs[y1][x] += sum;
+		if (write) costs[y1*dim_x + x] += sum;
+		int val = costs[y1*dim_x + x]; 
+		if (val > max_cost) max_cost = val;
 		y1 += multiplier;
 	}
+	return max_cost;
 }
 
-void draw_path(wire_t wire, cost_t *costs, int sum) {
+int max(int x, int y) {
+	return (x < y) ? y : x;	
+}
+
+int draw_path(wire_t wire, cost_t *costs, int dim_x, bool write, int sum) {
+	int cost1, cost2, cost3, cost4;
+	
 	if (wire.path == 0) {
 		int *c1 = wire.c1;
 		int *c2 = wire.c2;
-		increment_cost_x(costs, c1[0], wire.x_counter, c1[1], sum);
-		increment_cost_x(costs, wire.x_counter, c2[0], c2[1], sum);
+		cost1 = increment_cost_x(costs, c1[0], wire.x_counter, c1[1], dim_x, write, sum);
+		cost2 = increment_cost_x(costs, wire.x_counter, c2[0], c2[1], dim_x, write, sum);
 		if (c1[1] != c2[1]) {
 
-			increment_cost_y(costs, c1[1], c2[1], wire.x_counter, sum);
-			increment_cost_x(costs, c2[1], c2[1]+1, wire.x_counter, sum);
+			cost3 = increment_cost_y(costs, c1[1], c2[1], wire.x_counter, dim_x, write, sum);
+			cost4 = increment_cost_x(costs, c2[0], c2[0]+1, c2[1], dim_x, write, sum);
 		}
-		else increment_cost_x(costs, c2[0], c2[0] + 1, c2[1], sum);
+		else cost3 = increment_cost_x(costs, c2[0], c2[0] + 1, c2[1], dim_x, write, sum);
 	}
 	else {
 		int *c1 = wire.c1;
 		int *c2 = wire.c2;
-		increment_cost_y(costs, c1[1], wire.y_counter, c1[0], sum);
-		increment_cost_y(costs, wire.y_counter, c2[1], c2[0], sum);
+		cost1 = increment_cost_y(costs, c1[1], wire.y_counter, c1[0], dim_x, write, sum);
+		cost2 = increment_cost_y(costs, wire.y_counter, c2[1], c2[0], dim_x, write, sum);
 		if (c1[0] != c2[0]) {
-			increment_cost_x(costs, c1[0], c2[0], wire.y_counter, sum);
-			increment_cost_y(costs, c2[0], c2[0] + 1, wire.y_counter, sum);
+			cost3 = increment_cost_x(costs, c1[0], c2[0], wire.y_counter, dim_x, write, sum);
+			cost4 = increment_cost_y(costs, c2[1], c2[1] + 1, c2[0], dim_x, write, sum);
 		}
-		else increment_cost_y(costs, c2[1], c2[1] + 1, c2[0], sum);
+		else cost3 = increment_cost_y(costs, c2[1], c2[1] + 1, c2[0], dim_x, write, sum);
 	}
+	return max(max(max(cost1, cost2), cost3), cost4);
 }
-
-
-
-
 
 void fill_costs(cost_t *costs, int dimx, int dimy, wire_t *wires, int num_of_wires) {
 	
-	int maxCost = INFINITY;
-	int currCost = INFINITY:
 	for (int i = 0; i < num_of_wires; i++) {
-		while (currCost >= maxCost && !wires[i].end) {
-			draw_path(wires[i], costs, -1);
-			draw_path(wires[i], costs, 1);
-			currCost = find_cost(costs);
+		int maxCost = std::numeric_limits<int>::max();
+		int cost;
+		int best_path_counter;
+		int best_path;
+		wire_t w = wires[i];
+		draw_path(w, costs, dimx, true, -1);
+		w.path = 0;
+		w.x_counter = w.c1[0];
+		int multiplier = (w.c1[0] < w.c2[0]) ? 1 : -1;
+		while (w.x_counter != w.c2[0]) {
+			cost = draw_path(w, costs, dimx, false, 1);
+			if (cost < maxCost) {
+				maxCost = cost;
+				best_path = w.path;
+				best_path_counter = w.x_counter;
+			}
+			w.x_counter += multiplier;
+		}
+		w.path = 1;
+		w.y_counter = w.c1[1];
+		multiplier = (w.c1[1] < w.c2[1]) ? 1 : -1;
+		while (w.y_counter != w.c2[1]) {
+			cost = draw_path(w, costs, dimx, false, 1);
+			if (cost < maxCost) {
+				maxCost = cost;
+				best_path = w.path;
+				best_path_counter = w.y_counter;
+			}
+			w.y_counter += multiplier;
+		}
+		std::default_random_engine generator;
+		std::uniform_int_distribution<int> uni(0,abs(w.c1[0] - w.c2[0]) + abs(w.c1[1] - w.c2[1]));
+		std::uniform_int_distribution<int> random(0, 1);
+
+		int choice = random(generator);
+		if (choice == 0) {
+			w.path = best_path;
+			if (best_path == 0) w.x_counter = best_path_counter;
+			else w.y_counter = best_path_counter;
+		}
+		else {
+			int number = uni(generator);
+			if (number < abs(w.c1[0] - w.c2[0])) {
+				w.path = 0;
+				w.x_counter = number;
+			}
+			else {
+				w.path = 1;
+				w.y_counter = number;
+			}
+		}
+		draw_path(w, costs, dimx, true, 1);
 	}
 }
 
@@ -194,7 +252,7 @@ int main(int argc, const char *argv[])
     wires[i].c1[0] = x1;
     wires[i].c2[0] = x2;;
     wires[i].c1[1] = y1;
-    wires[i].x2[1] = y2;
+    wires[i].c2[1] = y2;
     wires[i].x_counter = 0;
     wires[i].y_counter = 0;
     wires[i].path = 0;
@@ -236,9 +294,9 @@ int main(int argc, const char *argv[])
      * Use OpenMP to parallelize the algorithm.
      * You should really implement as much of this (if not all of it) in
      * helper functions. */
-    
-    initialize_paths(wires, num_of_wires);
-
+	for (int i = 0; i < 5; i++) {
+		fill_costs(costs, dim_x, dim_y, wires, num_of_wires);	
+	}
   }
 
   compute_time += duration_cast<dsec>(Clock::now() - compute_start).count();
@@ -263,8 +321,12 @@ int main(int argc, const char *argv[])
 
   fprintf(output_costs_file, "%d %d\n", dim_x, dim_y);
 
-  // WRITE COSTS TO FILE HERE
-
+  for (int i = 0; i < dim_y; i++) {
+	  for (int j = 0; j < dim_x; j++) {
+		  fprintf(output_costs_file, "%d ", costs[i*dim_x + j]);
+		  if ((i*dim_x + j + 1) % 8 == 0) fprintf(output_costs_file, "\n");
+	  }
+  }
   fclose(output_costs_file);
 
 
@@ -278,7 +340,32 @@ int main(int argc, const char *argv[])
   fprintf(output_routes_file, "%d %d\n", dim_x, dim_y);
   fprintf(output_routes_file, "%d\n", num_of_wires);
 
-  // WRITE WIRES TO FILE HERE
+  for (int i = 0; i < num_of_wires; i++) {
+	wire_t w = wires[i];
+	int x1 = w.c1[0];
+	int x2 = w.c2[0];
+	int y1 = w.c1[1];
+	int y2 = w.c2[1];
+	if (x1 == x2 || y1 == y2) fprintf(output_routes_file, "%d %d %d %d\n", x1, y1, x2, y2);
+	else {
+		if (w.path == 0) {
+			if (w.x_counter == x1) 
+				fprintf(output_routes_file, "%d %d %d %d %d %d\n", x1, y1, x1, y2, x2, y2);
+			if (w.x_counter == x2) 
+				fprintf(output_routes_file, "%d %d %d %d %d %d\n", x1, y1, x2, y1, x2, y2);
+			else fprintf(output_routes_file, "%d %d %d %d %d %d %d %d\n", x1, y1, 
+				w.x_counter, y1, w.x_counter, y2, x2, y2);
+		}
+		else {
+			if (w.y_counter == y1) 
+				fprintf(output_routes_file, "%d %d %d %d %d %d\n", x1, y1, x2, y1, x2, y2);
+			if (w.x_counter == y2) 
+				fprintf(output_routes_file, "%d %d %d %d %d %d\n", x1, y1, x1, y2, x2, y2);
+			else fprintf(output_routes_file, "%d %d %d %d %d %d %d %d\n", x1, y1, 
+				x1, w.y_counter, x2, w.y_counter, x2, y2);
+		}
+	}
+  }
 
   fclose(output_routes_file);
 

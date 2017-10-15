@@ -10,10 +10,8 @@
 
 typedef struct
 {
-  int x1;
-  int x2;
-  int y1;
-  int y2;
+  int c1[2];
+  int c2[2];
   int x_counter;
   int y_counter;
   bool path;
