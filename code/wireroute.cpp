@@ -79,7 +79,7 @@ int increment_cost_x(cost_t *costs, int x1, int x2, int y, int dim_x, bool write
 	if (x1 > x2) multiplier = -1;
 	while (x1 != x2) {
 		if (write) costs[y*dim_x + x1] += sum;
-		int val = costs[y*dim_x + x1];
+		int val = costs[y*dim_x + x1] + sum;
 		if (val > max_cost) max_cost = val;
 		x1 += multiplier;
 	}
@@ -92,7 +92,7 @@ int increment_cost_y(cost_t *costs, int y1, int y2, int x, int dim_x, bool write
 	if (y1 > y2) multiplier = -1;
 	while (y1 != y2) {
 		if (write) costs[y1*dim_x + x] += sum;
-		int val = costs[y1*dim_x + x]; 
+		int val = costs[y1*dim_x + x] + sum; 
 		if (val > max_cost) max_cost = val;
 		y1 += multiplier;
 	}
@@ -132,62 +132,68 @@ int draw_path(wire_t wire, cost_t *costs, int dim_x, bool write, int sum) {
 	return max(max(max(cost1, cost2), cost3), cost4);
 }
 
-void fill_costs(cost_t *costs, int dimx, int dimy, wire_t *wires, int num_of_wires) {
+void fill_costs(cost_t *costs, int dimx, int dimy, wire_t *wires, int num_of_wires, bool is1) {
 	
 	for (int i = 0; i < num_of_wires; i++) {
 		int maxCost = std::numeric_limits<int>::max();
 		int cost;
 		int best_path_counter;
 		int best_path;
-		wire_t w = wires[i];
-		draw_path(w, costs, dimx, true, -1);
-		w.path = 0;
-		w.x_counter = w.c1[0];
-		int multiplier = (w.c1[0] < w.c2[0]) ? 1 : -1;
-		while (w.x_counter != w.c2[0]) {
-			cost = draw_path(w, costs, dimx, false, 1);
+		wire_t *w = &wires[i];
+		if (!is1) {
+			draw_path(*w, costs, dimx, true, -1);
+		}
+		w->path = 0;
+		w->x_counter = w->c1[0];
+		int multiplier = (w->c1[0] < w->c2[0]) ? 1 : -1;
+		while (w->x_counter != w->c2[0]) {
+			cost = draw_path(*w, costs, dimx, false, 1);
 			if (cost < maxCost) {
 				maxCost = cost;
-				best_path = w.path;
-				best_path_counter = w.x_counter;
+				best_path = w->path;
+				best_path_counter = w->x_counter;
 			}
-			w.x_counter += multiplier;
+			w->x_counter += multiplier;
 		}
-		w.path = 1;
-		w.y_counter = w.c1[1];
-		multiplier = (w.c1[1] < w.c2[1]) ? 1 : -1;
-		while (w.y_counter != w.c2[1]) {
-			cost = draw_path(w, costs, dimx, false, 1);
+		w->path = 1;
+		w->y_counter = w->c1[1];
+		multiplier = (w->c1[1] < w->c2[1]) ? 1 : -1;
+		while (w->y_counter != w->c2[1]) {
+			cost = draw_path(*w, costs, dimx, false, 1);
 			if (cost < maxCost) {
 				maxCost = cost;
-				best_path = w.path;
-				best_path_counter = w.y_counter;
+				best_path = w->path;
+				best_path_counter = w->y_counter;
 			}
-			w.y_counter += multiplier;
+			w->y_counter += multiplier;
 		}
-		std::default_random_engine generator;
-		std::uniform_int_distribution<int> uni(0,abs(w.c1[0] - w.c2[0]) + abs(w.c1[1] - w.c2[1]));
-		std::uniform_int_distribution<int> random(0, 1);
-
+		std::random_device rd;
+		std::mt19937 generator(rd());
+		std::uniform_int_distribution<int> uni(0,abs(w->c1[0] - w->c2[0]) + abs(w->c1[1] - w->c2[1]) + 1);
+		std::uniform_int_distribution<int> random(0, 2);
 		int choice = random(generator);
 		if (choice == 0) {
-			w.path = best_path;
-			if (best_path == 0) w.x_counter = best_path_counter;
-			else w.y_counter = best_path_counter;
+			w->path = best_path;
+			if (best_path == 0) w->x_counter = best_path_counter;
+			else w->y_counter = best_path_counter;
 		}
 		else {
 			int number = uni(generator);
-			if (number < abs(w.c1[0] - w.c2[0])) {
-				w.path = 0;
-				w.x_counter = number;
+			if (number < abs(w->c1[0] - w->c2[0])) {
+				w->path = 0;
+				if (w->c1[0] == w->c2[0]) w->y_counter = w->c1[0];
+				else w->x_counter = std::min(w->c1[0], w->c2[0]) + number;
 			}
 			else {
-				w.path = 1;
-				w.y_counter = number;
+				w->path = 1;
+				w->y_counter = number - abs(w->c1[0] - w->c2[0]);
+				if (w->c1[1] == w->c2[1]) w->y_counter = w->c1[1];
+				else w->y_counter += std::min(w->c1[1], w->c2[1]);
 			}
 		}
-		draw_path(w, costs, dimx, true, 1);
+		draw_path(*w, costs, dimx, true, 1);
 	}
+	
 }
 
 int main(int argc, const char *argv[])
@@ -295,7 +301,7 @@ int main(int argc, const char *argv[])
      * You should really implement as much of this (if not all of it) in
      * helper functions. */
 	for (int i = 0; i < 5; i++) {
-		fill_costs(costs, dim_x, dim_y, wires, num_of_wires);	
+		fill_costs(costs, dim_x, dim_y, wires, num_of_wires, i==0);	
 	}
   }
 
@@ -324,7 +330,7 @@ int main(int argc, const char *argv[])
   for (int i = 0; i < dim_y; i++) {
 	  for (int j = 0; j < dim_x; j++) {
 		  fprintf(output_costs_file, "%d ", costs[i*dim_x + j]);
-		  if ((i*dim_x + j + 1) % 8 == 0) fprintf(output_costs_file, "\n");
+		  if ((i*dim_x + j + 1) % dim_x == 0) fprintf(output_costs_file, "\n");
 	  }
   }
   fclose(output_costs_file);
