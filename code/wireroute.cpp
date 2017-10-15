@@ -357,7 +357,7 @@ int main(int argc, const char *argv[])
 		if (w.path == 0) {
 			if (w.x_counter == x1) 
 				fprintf(output_routes_file, "%d %d %d %d %d %d\n", x1, y1, x1, y2, x2, y2);
-			if (w.x_counter == x2) 
+			else if (w.x_counter == x2) 
 				fprintf(output_routes_file, "%d %d %d %d %d %d\n", x1, y1, x2, y1, x2, y2);
 			else fprintf(output_routes_file, "%d %d %d %d %d %d %d %d\n", x1, y1, 
 				w.x_counter, y1, w.x_counter, y2, x2, y2);
@@ -365,7 +365,7 @@ int main(int argc, const char *argv[])
 		else {
 			if (w.y_counter == y1) 
 				fprintf(output_routes_file, "%d %d %d %d %d %d\n", x1, y1, x2, y1, x2, y2);
-			if (w.x_counter == y2) 
+			else if (w.y_counter == y2) 
 				fprintf(output_routes_file, "%d %d %d %d %d %d\n", x1, y1, x1, y2, x2, y2);
 			else fprintf(output_routes_file, "%d %d %d %d %d %d %d %d\n", x1, y1, 
 				x1, w.y_counter, x2, w.y_counter, x2, y2);
