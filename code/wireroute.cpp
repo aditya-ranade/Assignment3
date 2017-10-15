@@ -15,6 +15,9 @@
 
 #define BUFSIZE 1024
 
+#define MIN(X, Y) (((X) < (Y)) ? (X) : (Y))
+#define MAX(X, Y) (((X) < (Y)) ? (X) : (Y))
+
 static int _argc;
 static const char **_argv;
 
@@ -59,6 +62,76 @@ static void show_help(const char *program_path)
 }
 
 
+int *min_x(int *c1, int *c2) {
+	if (c1[0] > c2[0]) return c2;
+	else return c1;
+}
+
+int *max_x(int *c1, int *c2) {
+	if (c1[0] <= c2[0]) return c2;
+	else return c1;
+}
+
+void increment_cost_x(cost_t *costs, int x1, int x2, int y) {
+	int multiplier = 1;
+	if (x1 > x2) multiplier = -1;
+	while (x1 != x2) {
+		costs[y][x1] += 1;
+		x1 += multiplier;
+	}
+}
+
+void increment_cost_y(cost_t *costs, int y1, int y2, int x, int sum) {
+	int multiplier = 1;
+	if (y1 > y2) multiplier = -1;
+	while (y1 != y2) {
+		costs[y1][x] += sum;
+		y1 += multiplier;
+	}
+}
+
+void draw_path(wire_t wire, cost_t *costs, int sum) {
+	if (wire.path == 0) {
+		int *c1 = wire.c1;
+		int *c2 = wire.c2;
+		increment_cost_x(costs, c1[0], wire.x_counter, c1[1], sum);
+		increment_cost_x(costs, wire.x_counter, c2[0], c2[1], sum);
+		if (c1[1] != c2[1]) {
+
+			increment_cost_y(costs, c1[1], c2[1], wire.x_counter, sum);
+			increment_cost_x(costs, c2[1], c2[1]+1, wire.x_counter, sum);
+		}
+		else increment_cost_x(costs, c2[0], c2[0] + 1, c2[1], sum);
+	}
+	else {
+		int *c1 = wire.c1;
+		int *c2 = wire.c2;
+		increment_cost_y(costs, c1[1], wire.y_counter, c1[0], sum);
+		increment_cost_y(costs, wire.y_counter, c2[1], c2[0], sum);
+		if (c1[0] != c2[0]) {
+			increment_cost_x(costs, c1[0], c2[0], wire.y_counter, sum);
+			increment_cost_y(costs, c2[0], c2[0] + 1, wire.y_counter, sum);
+		}
+		else increment_cost_y(costs, c2[1], c2[1] + 1, c2[0], sum);
+	}
+}
+
+
+
+
+
+void fill_costs(cost_t *costs, int dimx, int dimy, wire_t *wires, int num_of_wires) {
+	
+	int maxCost = INFINITY;
+	int currCost = INFINITY:
+	for (int i = 0; i < num_of_wires; i++) {
+		while (currCost >= maxCost && !wires[i].end) {
+			draw_path(wires[i], costs, -1);
+			draw_path(wires[i], costs, 1);
+			currCost = find_cost(costs);
+	}
+}
+
 int main(int argc, const char *argv[])
 {
   using namespace std::chrono;
@@ -67,7 +140,7 @@ int main(int argc, const char *argv[])
 
   auto init_start = Clock::now();
   double init_time = 0;
- 
+
   _argc = argc - 1;
   _argv = argv + 1;
 
@@ -88,7 +161,7 @@ int main(int argc, const char *argv[])
     show_help(argv[0]);
     return 1;
   }
-  
+
   printf("Number of threads: %d\n", num_of_threads);
   printf("Probability parameter for simulated annealing: %lf.\n", SA_prob);
   printf("Number of simulated anneling iterations: %d\n", SA_iters);
@@ -100,7 +173,7 @@ int main(int argc, const char *argv[])
     printf("Unable to open file: %s.\n", input_filename);
     return -1;
   }
- 
+
   int dim_x, dim_y;
   int num_of_wires;
 
@@ -109,18 +182,26 @@ int main(int argc, const char *argv[])
 
   wire_t *wires = (wire_t *)calloc(num_of_wires, sizeof(wire_t));
   (void)wires;
- 
+
   int x1, y1, x2, y2;
-  int index = 0;
+  int i = 0;
   while (fscanf(input, "%d %d %d %d\n", &x1, &y1, &x2, &y2) != EOF) {
     /* PARSE THE INPUT FILE HERE.
-     * Define wire_t in wireroute.h and store 
+     * Define wire_t in wireroute.h and store
      * x1, x2, y1, and y2 into the wires array allocated above
      * based on your wire_t definition. */
-    index++;
+
+    wires[i].c1[0] = x1;
+    wires[i].c2[0] = x2;;
+    wires[i].c1[1] = y1;
+    wires[i].x2[1] = y2;
+    wires[i].x_counter = 0;
+    wires[i].y_counter = 0;
+    wires[i].path = 0;
+    i++;
   }
 
-  if (index != num_of_wires) {
+  if (i != num_of_wires) {
     printf("Error: wire count mismatch");
     return -1;
   }
@@ -129,8 +210,7 @@ int main(int argc, const char *argv[])
   (void)costs;
   /* INITIALIZE YOUR COST MATRIX HERE */
 
-  
-  /* Initialize additional data structures needed in the algorithm 
+  /* Initialize additional data structures needed in the algorithm
    * here if you feel it's needed. */
 
   error = 0;
@@ -142,7 +222,7 @@ int main(int argc, const char *argv[])
   double compute_time = 0;
 #ifdef RUN_MIC /* Use RUN_MIC to distinguish between the target of compilation */
 
-  /* This pragma means we want the code in the following block be executed in 
+  /* This pragma means we want the code in the following block be executed in
    * Xeon Phi.
    */
 #pragma offload target(mic) \
@@ -153,15 +233,18 @@ int main(int argc, const char *argv[])
     /* Implement the wire routing algorithm here
      * Feel free to structure the algorithm into different functions
      * Don't use global variables.
-     * Use OpenMP to parallelize the algorithm. 
+     * Use OpenMP to parallelize the algorithm.
      * You should really implement as much of this (if not all of it) in
      * helper functions. */
+    
+    initialize_paths(wires, num_of_wires);
+
   }
 
   compute_time += duration_cast<dsec>(Clock::now() - compute_start).count();
   printf("Computation Time: %lf.\n", compute_time);
 
-  /* OUTPUT YOUR RESULTS TO FILES HERE 
+  /* OUTPUT YOUR RESULTS TO FILES HERE
    * When you're ready to output your data to files, uncommment this chunk of
    * code and fill in the specified blanks indicated by comments. More about
    * this in the README. */
@@ -179,8 +262,8 @@ int main(int argc, const char *argv[])
   }
 
   fprintf(output_costs_file, "%d %d\n", dim_x, dim_y);
-  
-  // WRITE COSTS TO FILE HERE 
+
+  // WRITE COSTS TO FILE HERE
 
   fclose(output_costs_file);
 
@@ -194,7 +277,7 @@ int main(int argc, const char *argv[])
 
   fprintf(output_routes_file, "%d %d\n", dim_x, dim_y);
   fprintf(output_routes_file, "%d\n", num_of_wires);
-  
+
   // WRITE WIRES TO FILE HERE
 
   fclose(output_routes_file);

@@ -10,7 +10,13 @@
 
 typedef struct
 {
-  /* Define the data structure for wire here */
+  int x1;
+  int x2;
+  int y1;
+  int y2;
+  int x_counter;
+  int y_counter;
+  bool path;
 } wire_t;
 
 typedef int cost_t;
