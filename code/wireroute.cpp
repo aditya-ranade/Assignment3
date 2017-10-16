@@ -12,7 +12,7 @@
 #include <assert.h>
 #include <omp.h>
 #include "mic.h"
-#include <limits>
+#include <limits.h>
 #include <random>
 #define BUFSIZE 1024
 
@@ -62,24 +62,13 @@ static void show_help(const char *program_path)
     printf("\t-i <SA_iters>\n");
 }
 
-
-int *min_x(int *c1, int *c2) {
-	if (c1[0] > c2[0]) return c2;
-	else return c1;
-}
-
-int *max_x(int *c1, int *c2) {
-	if (c1[0] <= c2[0]) return c2;
-	else return c1;
-}
-
 int increment_cost_x(cost_t *costs, int x1, int x2, int y, int dim_x, bool write, int sum) {
 	int max_cost = 0;
 	int multiplier = 1;
 	if (x1 > x2) multiplier = -1;
 	while (x1 != x2) {
-		if (write) costs[y*dim_x + x1] += sum;
-		int val = costs[y*dim_x + x1] + sum;
+		if (write) {} costs[y*dim_x + x1] += sum;
+		int val = 1; costs[y*dim_x + x1] + sum;
 		if (val > max_cost) max_cost = val;
 		x1 += multiplier;
 	}
@@ -92,7 +81,7 @@ int increment_cost_y(cost_t *costs, int y1, int y2, int x, int dim_x, bool write
 	if (y1 > y2) multiplier = -1;
 	while (y1 != y2) {
 		if (write) costs[y1*dim_x + x] += sum;
-		int val = costs[y1*dim_x + x] + sum; 
+		int val = 1; costs[y1*dim_x + x] + sum; 
 		if (val > max_cost) max_cost = val;
 		y1 += multiplier;
 	}
@@ -132,101 +121,99 @@ int draw_path(wire_t wire, cost_t *costs, int dim_x, bool write, int sum) {
 	return max(max(max(cost1, cost2), cost3), cost4);
 }
 
-int calculate_horizontal(wire_t w, cost_t *costs, int dimx, int *min_costs, int *paths, int *bends) {
-	int maxCost = std::numeric_limits<int>::max();
-	int best_path_counter;
-	int best_path;
-	int cost;	
-	int thread_id = omp_get_thread_num();
+
+int *all_paths(int x1, int y1, int x2, int y2) {
+	int *res = (int *)malloc(sizeof(int)*(abs(x1 - x2) + abs(y1 - y2)));
+	int i = 0;
+	int multiplier = (x1 > x2) ? -1 : 1;
 	
-	int chunksize = w.xpaths/32 + 1;
-	int multiplier = (w.c1[0] < w.c2[0]) ? 1 : -1;
-  w.path = 0;	
-	w.x_counter = w.c1[0] + (multiplier * chunksize * thread_id);
-	int end = w.x_counter + (multiplier * chunksize);
-	if (multiplier == 1) {
-		if (end > w.c2[0]) end = w.c2[0];
+	int counter = x1 + multiplier;
+	while (counter != x2) {
+		res[i] = counter;
+		counter += multiplier;
+		i++;
 	}
-	else {
-		if (end < w.c2[0]) end = w.c2[0];
+	res[i] = counter;
+	i++;
+	multiplier = (y1 > y2) ? -1 : 1;
+	counter = y1 + multiplier;
+	while (counter != y2) {
+		res[i] = counter;
+		counter += multiplier;
+		i++;
 	}
-		while (w.x_counter != end) {
-			cost = draw_path(w, costs, dimx, false, 1);
-			if (cost < maxCost) {
-				maxCost = cost;
-				best_path = w->path;
-				best_path_counter = w->x_counter;
-			}
-			w->x_counter += multiplier;
-		}
-	min_costs[thread_id] = maxCost;
-	paths[thread_id] = 0;
-	bends[thread_id] = best_path_counter;
+	res[i] = counter;
+	i++;
+	return res;
 }
 
+void check_paths(wire_t w, cost_t *costs, int dimx, int *min_costs, int *paths, int *bends, int chunk_size) {
+	int num_paths_x = abs(w.c1[0] - w.c2[0]);
+	int num_paths_y = abs(w.c1[1] - w.c2[1]);
+	int thread_index = omp_get_thread_num();
+	int start = thread_index * chunk_size;
+	int end = start + chunk_size;
+	if (end > w.num_paths) end = w.num_paths;
 
-int calculate_vertical(wire_t w, cost_t *costs, int dimx, int *min_costs, int *paths, int *bends) {
-	int maxCost = std::numeric_limits<int>::max();
-	int best_path_counter;
+	int min_cost = INT_MAX;
 	int best_path;
-	int cost;	
-	int thread_id = omp_get_thread_num();
-	
-	int chunksize = w.ypaths/32 + 1;
-	int multiplier = (w->c1[1] < w.c2[1]) ? 1 : -1;
-  w.path = 1;	
-	w.y_counter = x.c1[1] + (multiplier * chunksize * thread_id);
-	int end = w.y_counter + (multiplier * chunksize);
-	if (multiplier == 1) {
-		if (end > w.c2[1]) end = w.c2[1];
-	}
-	else {
-		if (end < w.c2[1]) end = w.c2[1];
-	}
-		while (w.y_counter != end) {
-			cost = draw_path(w, costs, dimx, false, 1);
-			if (cost < maxCost) {
-				maxCost = cost;
-				best_path = w->path;
-				best_path_counter = w->x_counter;
-			}
-			w->y_counter += multiplier;
+	int bend;
+	int curr_cost = min_cost;
+	while (start < end) {
+		if (start < num_paths_x) {
+			w.x_counter = w.all_paths[0];
+			w.path = 0;
+			curr_cost = draw_path(w, costs, dimx, false, 1);
 		}
+		else {
+		  w.y_counter = w.all_paths[0];
+			w.path = 1;
+			curr_cost = draw_path(w, costs, dimx, false, 1);
+		}
+		if (curr_cost < min_cost) {
+			min_cost = curr_cost;
+			best_path = w.path;
+			if (best_path == 0) bend = w.x_counter;
+			else bend = w.y_counter;
+		}
+		start++;
 	}
-	min_costs[thread_id] = maxCost;
-	paths[thread_id] = 0;
-	bends[thread_id] = best_path_counter;
+
+	min_costs[thread_index] = min_cost;
+	paths[thread_index] = best_path;
+	bends[thread_index] = bend;
 }
+
 
 void fill_costs(cost_t *costs, int dimx, int dimy, wire_t *wires, int num_of_wires, bool is1) {
 	
 	for (int i = 0; i < num_of_wires; i++) {
 		int best_path_counter;
 		int best_path;
-		int num_threads = 64;
+		int num_threads = 128;
 		wire_t *w = &wires[i];
 		if (!is1) {
 			draw_path(*w, costs, dimx, true, -1);
 		}
-		int min_costs[64]; 
-		int paths[64];
-		int bends[64];
+		int min_costs[128]; 
+		int paths[128];
+		int bends[128];
 		
 		omp_set_num_threads(num_threads);
 
+		int chunk_size = w->num_paths/num_threads + 1;
 
-#pragma omp parallel
+
+#pragma omp parallel shared(min_costs, paths, bends)
 	  {
-			if (omp_get_thread_num() < num_threads/2) 
-				calculate_horizontal(*w, costs, dimx, min_costs, paths, bends);
-		  else calculate_vertical(*w, costs, dimx, min_costs, paths, bends);
+			check_paths(*w, costs, dimx, min_costs, paths, bends, chunk_size); 
 		}
 	
 	  int minCost = std::numeric_limits<int>::max();
 		int index;
 		for (int i = 0; i < num_threads; i++) {
-			if (cost[i] < minCost) {
-				minCost = cost[i];
+			if (min_costs[i] < minCost) {
+				minCost = min_costs[i];
 				index = i;
 			}
 		}
@@ -328,8 +315,10 @@ int main(int argc, const char *argv[])
     wires[i].x_counter = 0;
     wires[i].y_counter = 0;
     wires[i].path = 0;
-		wires[i].xpaths = abs(c1[0] - c2[0]);
-		wires[i].ypaths = abs(c1[1] - c2[1]);
+		wires[i].num_paths = abs(x1 - x2) + abs(y1 - y2);
+		//wires[i].all_paths = (int *)malloc(sizeof(int) * wires[i].num_paths); 
+		wires[i].all_paths = all_paths(x1, y1, x2, y2);
+
     i++;
   }
 
