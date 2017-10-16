@@ -12,10 +12,8 @@ typedef struct
 {
   int c1[2];
   int c2[2];
-  int x_counter;
-  int y_counter;
+	int bend;
   bool path;
-	int *all_paths;
 	int num_paths;
 } wire_t;
 

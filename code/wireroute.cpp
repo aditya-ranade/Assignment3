@@ -67,8 +67,8 @@ int increment_cost_x(cost_t *costs, int x1, int x2, int y, int dim_x, bool write
 	int multiplier = 1;
 	if (x1 > x2) multiplier = -1;
 	while (x1 != x2) {
-		if (write) {} costs[y*dim_x + x1] += sum;
-		int val = 1; costs[y*dim_x + x1] + sum;
+		if (write) costs[y*dim_x + x1] += sum;
+		int val = costs[y*dim_x + x1] + sum;
 		if (val > max_cost) max_cost = val;
 		x1 += multiplier;
 	}
@@ -81,7 +81,7 @@ int increment_cost_y(cost_t *costs, int y1, int y2, int x, int dim_x, bool write
 	if (y1 > y2) multiplier = -1;
 	while (y1 != y2) {
 		if (write) costs[y1*dim_x + x] += sum;
-		int val = 1; costs[y1*dim_x + x] + sum; 
+		int val = costs[y1*dim_x + x] + sum; 
 		if (val > max_cost) max_cost = val;
 		y1 += multiplier;
 	}
@@ -93,16 +93,19 @@ int max(int x, int y) {
 }
 
 int draw_path(wire_t wire, cost_t *costs, int dim_x, bool write, int sum) {
+	
 	int cost1, cost2, cost3, cost4;
 	
+	int bend = wire.bend;
+
 	if (wire.path == 0) {
 		int *c1 = wire.c1;
 		int *c2 = wire.c2;
-		cost1 = increment_cost_x(costs, c1[0], wire.x_counter, c1[1], dim_x, write, sum);
-		cost2 = increment_cost_x(costs, wire.x_counter, c2[0], c2[1], dim_x, write, sum);
+		cost1 = increment_cost_x(costs, c1[0], bend, c1[1], dim_x, write, sum);
+		cost2 = increment_cost_x(costs, bend, c2[0], c2[1], dim_x, write, sum);
 		if (c1[1] != c2[1]) {
 
-			cost3 = increment_cost_y(costs, c1[1], c2[1], wire.x_counter, dim_x, write, sum);
+			cost3 = increment_cost_y(costs, c1[1], c2[1], bend, dim_x, write, sum);
 			cost4 = increment_cost_x(costs, c2[0], c2[0]+1, c2[1], dim_x, write, sum);
 		}
 		else cost3 = increment_cost_x(costs, c2[0], c2[0] + 1, c2[1], dim_x, write, sum);
@@ -110,10 +113,10 @@ int draw_path(wire_t wire, cost_t *costs, int dim_x, bool write, int sum) {
 	else {
 		int *c1 = wire.c1;
 		int *c2 = wire.c2;
-		cost1 = increment_cost_y(costs, c1[1], wire.y_counter, c1[0], dim_x, write, sum);
-		cost2 = increment_cost_y(costs, wire.y_counter, c2[1], c2[0], dim_x, write, sum);
+		cost1 = increment_cost_y(costs, c1[1], bend, c1[0], dim_x, write, sum);
+		cost2 = increment_cost_y(costs, bend, c2[1], c2[0], dim_x, write, sum);
 		if (c1[0] != c2[0]) {
-			cost3 = increment_cost_x(costs, c1[0], c2[0], wire.y_counter, dim_x, write, sum);
+			cost3 = increment_cost_x(costs, c1[0], c2[0], bend, dim_x, write, sum);
 			cost4 = increment_cost_y(costs, c2[1], c2[1] + 1, c2[0], dim_x, write, sum);
 		}
 		else cost3 = increment_cost_y(costs, c2[1], c2[1] + 1, c2[0], dim_x, write, sum);
@@ -122,61 +125,64 @@ int draw_path(wire_t wire, cost_t *costs, int dim_x, bool write, int sum) {
 }
 
 
-int *all_paths(int x1, int y1, int x2, int y2) {
-	int *res = (int *)malloc(sizeof(int)*(abs(x1 - x2) + abs(y1 - y2)));
+void all_paths(int x1, int y1, int x2, int y2, int *res) {
 	int i = 0;
 	int multiplier = (x1 > x2) ? -1 : 1;
 	
 	int counter = x1 + multiplier;
-	while (counter != x2) {
+	if (x1 != x2) {
+		while (counter != x2) {
+			res[i] = counter;
+			counter += multiplier;
+			i++;
+		}
 		res[i] = counter;
-		counter += multiplier;
 		i++;
 	}
-	res[i] = counter;
-	i++;
-	multiplier = (y1 > y2) ? -1 : 1;
-	counter = y1 + multiplier;
-	while (counter != y2) {
+	if (y1 != y2) {
+		multiplier = (y1 > y2) ? -1 : 1;
+		counter = y1 + multiplier;
+		while (counter != y2) {
+			res[i] = counter;
+			counter += multiplier;
+			i++;
+		}
 		res[i] = counter;
-		counter += multiplier;
 		i++;
 	}
-	res[i] = counter;
-	i++;
-	return res;
 }
 
 void check_paths(wire_t w, cost_t *costs, int dimx, int *min_costs, int *paths, int *bends, int chunk_size) {
 	int num_paths_x = abs(w.c1[0] - w.c2[0]);
 	int num_paths_y = abs(w.c1[1] - w.c2[1]);
+	int x_multiplier = (w.c1[0] > w.c2[0]) ? -1 : 1;
+	int y_multiplier = (w.c1[1] > w.c2[1]) ? -1 : 1;
+
 	int thread_index = omp_get_thread_num();
 	int start = thread_index * chunk_size;
-	int end = start + chunk_size;
-	if (end > w.num_paths) end = w.num_paths;
-
+	int i = 0;
 	int min_cost = INT_MAX;
 	int best_path;
 	int bend;
 	int curr_cost = min_cost;
-	while (start < end) {
-		if (start < num_paths_x) {
-			w.x_counter = w.all_paths[0];
+	while (i < chunk_size && (start + i) < w.num_paths) {
+		if ((start + i) < num_paths_x) {
+			w.bend = w.c1[0] + (x_multiplier * (start + i + 1)); 
 			w.path = 0;
 			curr_cost = draw_path(w, costs, dimx, false, 1);
 		}
 		else {
-		  w.y_counter = w.all_paths[0];
+		  int offset = start + i - num_paths_x;
 			w.path = 1;
+			w.bend = w.c1[1] + (y_multiplier * (offset + 1));
 			curr_cost = draw_path(w, costs, dimx, false, 1);
 		}
 		if (curr_cost < min_cost) {
 			min_cost = curr_cost;
 			best_path = w.path;
-			if (best_path == 0) bend = w.x_counter;
-			else bend = w.y_counter;
+			bend = w.bend;
 		}
-		start++;
+		i++;
 	}
 
 	min_costs[thread_index] = min_cost;
@@ -186,7 +192,6 @@ void check_paths(wire_t w, cost_t *costs, int dimx, int *min_costs, int *paths, 
 
 
 void fill_costs(cost_t *costs, int dimx, int dimy, wire_t *wires, int num_of_wires, bool is1) {
-	
 	for (int i = 0; i < num_of_wires; i++) {
 		int best_path_counter;
 		int best_path;
@@ -198,55 +203,51 @@ void fill_costs(cost_t *costs, int dimx, int dimy, wire_t *wires, int num_of_wir
 		int min_costs[128]; 
 		int paths[128];
 		int bends[128];
-		
 		omp_set_num_threads(num_threads);
 
 		int chunk_size = w->num_paths/num_threads + 1;
-
-
-#pragma omp parallel shared(min_costs, paths, bends)
-	  {
-			check_paths(*w, costs, dimx, min_costs, paths, bends, chunk_size); 
-		}
-	
-	  int minCost = std::numeric_limits<int>::max();
-		int index;
-		for (int i = 0; i < num_threads; i++) {
-			if (min_costs[i] < minCost) {
-				minCost = min_costs[i];
-				index = i;
-			}
-		}
-		best_path = paths[index];
-		best_path_counter = bends[index];
-
+		int x_multiplier = (w->c1[0] > w->c2[0]) ? -1 : 1;
+		int y_multiplier = (w->c1[1] > w->c2[1]) ? -1 : 1;
+		int num_paths_x = abs(w->c1[0] - w->c2[0]);
+		int num_paths_y = abs(w->c1[1] - w->c2[1]);
+		
 		std::random_device rd;
 		std::mt19937 generator(rd());
-		std::uniform_int_distribution<int> uni(0,abs(w->c1[0] - w->c2[0]) + abs(w->c1[1] - w->c2[1]) + 1);
+		std::uniform_int_distribution<int> uni(0, w->num_paths + 1);
 		std::uniform_int_distribution<int> random(0, 2);
 		int choice = random(generator);
 		if (choice == 0) {
+			#pragma omp parallel 
+			{	
+				check_paths(*w, costs, dimx, min_costs, paths, bends, chunk_size); 
+			}	
+			int minCost = std::numeric_limits<int>::max();
+			int index;
+			for (int i = 0; i < num_threads; i++) {
+				if (min_costs[i] < minCost) {
+					minCost = min_costs[i];
+					index = i;
+				}
+			}
+			best_path = paths[index];
+			best_path_counter = bends[index];
 			w->path = best_path;
-			if (best_path == 0) w->x_counter = best_path_counter;
-			else w->y_counter = best_path_counter;
+			w->bend = best_path_counter;
 		}
 		else {
 			int number = uni(generator);
-			if (number < abs(w->c1[0] - w->c2[0])) {
+			if (number < num_paths_x) {
 				w->path = 0;
-				if (w->c1[0] == w->c2[0]) w->y_counter = w->c1[0];
-				else w->x_counter = std::min(w->c1[0], w->c2[0]) + number;
+				w->bend = w->c1[0] + x_multiplier*(number + 1);
 			}
 			else {
 				w->path = 1;
-				w->y_counter = number - abs(w->c1[0] - w->c2[0]);
-				if (w->c1[1] == w->c2[1]) w->y_counter = w->c1[1];
-				else w->y_counter += std::min(w->c1[1], w->c2[1]);
+				int offset = number - num_paths_x;
+				w->bend = w->c1[1] + y_multiplier*(offset + 1);
 			}
 		}
 		draw_path(*w, costs, dimx, true, 1);
 	}
-	
 }
 
 int main(int argc, const char *argv[])
@@ -312,13 +313,9 @@ int main(int argc, const char *argv[])
     wires[i].c2[0] = x2;;
     wires[i].c1[1] = y1;
     wires[i].c2[1] = y2;
-    wires[i].x_counter = 0;
-    wires[i].y_counter = 0;
+		wires[i].bend = 0;
     wires[i].path = 0;
 		wires[i].num_paths = abs(x1 - x2) + abs(y1 - y2);
-		//wires[i].all_paths = (int *)malloc(sizeof(int) * wires[i].num_paths); 
-		wires[i].all_paths = all_paths(x1, y1, x2, y2);
-
     i++;
   }
 
@@ -412,20 +409,20 @@ int main(int argc, const char *argv[])
 	if (x1 == x2 || y1 == y2) fprintf(output_routes_file, "%d %d %d %d\n", x1, y1, x2, y2);
 	else {
 		if (w.path == 0) {
-			if (w.x_counter == x1) 
+			if (w.bend == x1) 
 				fprintf(output_routes_file, "%d %d %d %d %d %d\n", x1, y1, x1, y2, x2, y2);
-			else if (w.x_counter == x2) 
+			else if (w.bend == x2) 
 				fprintf(output_routes_file, "%d %d %d %d %d %d\n", x1, y1, x2, y1, x2, y2);
 			else fprintf(output_routes_file, "%d %d %d %d %d %d %d %d\n", x1, y1, 
-				w.x_counter, y1, w.x_counter, y2, x2, y2);
+				w.bend, y1, w.bend, y2, x2, y2);
 		}
 		else {
-			if (w.y_counter == y1) 
+			if (w.bend == y1) 
 				fprintf(output_routes_file, "%d %d %d %d %d %d\n", x1, y1, x2, y1, x2, y2);
-			else if (w.y_counter == y2) 
+			else if (w.bend == y2) 
 				fprintf(output_routes_file, "%d %d %d %d %d %d\n", x1, y1, x1, y2, x2, y2);
 			else fprintf(output_routes_file, "%d %d %d %d %d %d %d %d\n", x1, y1, 
-				x1, w.y_counter, x2, w.y_counter, x2, y2);
+				x1, w.bend, x2, w.bend, x2, y2);
 		}
 	}
   }
