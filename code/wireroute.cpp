@@ -132,22 +132,26 @@ int draw_path(wire_t wire, cost_t *costs, int dim_x, bool write, int sum) {
 	return max(max(max(cost1, cost2), cost3), cost4);
 }
 
-void fill_costs(cost_t *costs, int dimx, int dimy, wire_t *wires, int num_of_wires, bool is1) {
+int calculate_horizontal(wire_t w, cost_t *costs, int dimx, int *min_costs, int *paths, int *bends) {
+	int maxCost = std::numeric_limits<int>::max();
+	int best_path_counter;
+	int best_path;
+	int cost;	
+	int thread_id = omp_get_thread_num();
 	
-	for (int i = 0; i < num_of_wires; i++) {
-		int maxCost = std::numeric_limits<int>::max();
-		int cost;
-		int best_path_counter;
-		int best_path;
-		wire_t *w = &wires[i];
-		if (!is1) {
-			draw_path(*w, costs, dimx, true, -1);
-		}
-		w->path = 0;
-		w->x_counter = w->c1[0];
-		int multiplier = (w->c1[0] < w->c2[0]) ? 1 : -1;
-		while (w->x_counter != w->c2[0]) {
-			cost = draw_path(*w, costs, dimx, false, 1);
+	int chunksize = w.xpaths/32 + 1;
+	int multiplier = (w.c1[0] < w.c2[0]) ? 1 : -1;
+  w.path = 0;	
+	w.x_counter = w.c1[0] + (multiplier * chunksize * thread_id);
+	int end = w.x_counter + (multiplier * chunksize);
+	if (multiplier == 1) {
+		if (end > w.c2[0]) end = w.c2[0];
+	}
+	else {
+		if (end < w.c2[0]) end = w.c2[0];
+	}
+		while (w.x_counter != end) {
+			cost = draw_path(w, costs, dimx, false, 1);
 			if (cost < maxCost) {
 				maxCost = cost;
 				best_path = w->path;
@@ -155,18 +159,80 @@ void fill_costs(cost_t *costs, int dimx, int dimy, wire_t *wires, int num_of_wir
 			}
 			w->x_counter += multiplier;
 		}
-		w->path = 1;
-		w->y_counter = w->c1[1];
-		multiplier = (w->c1[1] < w->c2[1]) ? 1 : -1;
-		while (w->y_counter != w->c2[1]) {
-			cost = draw_path(*w, costs, dimx, false, 1);
+	min_costs[thread_id] = maxCost;
+	paths[thread_id] = 0;
+	bends[thread_id] = best_path_counter;
+}
+
+
+int calculate_vertical(wire_t w, cost_t *costs, int dimx, int *min_costs, int *paths, int *bends) {
+	int maxCost = std::numeric_limits<int>::max();
+	int best_path_counter;
+	int best_path;
+	int cost;	
+	int thread_id = omp_get_thread_num();
+	
+	int chunksize = w.ypaths/32 + 1;
+	int multiplier = (w->c1[1] < w.c2[1]) ? 1 : -1;
+  w.path = 1;	
+	w.y_counter = x.c1[1] + (multiplier * chunksize * thread_id);
+	int end = w.y_counter + (multiplier * chunksize);
+	if (multiplier == 1) {
+		if (end > w.c2[1]) end = w.c2[1];
+	}
+	else {
+		if (end < w.c2[1]) end = w.c2[1];
+	}
+		while (w.y_counter != end) {
+			cost = draw_path(w, costs, dimx, false, 1);
 			if (cost < maxCost) {
 				maxCost = cost;
 				best_path = w->path;
-				best_path_counter = w->y_counter;
+				best_path_counter = w->x_counter;
 			}
 			w->y_counter += multiplier;
 		}
+	}
+	min_costs[thread_id] = maxCost;
+	paths[thread_id] = 0;
+	bends[thread_id] = best_path_counter;
+}
+
+void fill_costs(cost_t *costs, int dimx, int dimy, wire_t *wires, int num_of_wires, bool is1) {
+	
+	for (int i = 0; i < num_of_wires; i++) {
+		int best_path_counter;
+		int best_path;
+		int num_threads = 64;
+		wire_t *w = &wires[i];
+		if (!is1) {
+			draw_path(*w, costs, dimx, true, -1);
+		}
+		int min_costs[64]; 
+		int paths[64];
+		int bends[64];
+		
+		omp_set_num_threads(num_threads);
+
+
+#pragma omp parallel
+	  {
+			if (omp_get_thread_num() < num_threads/2) 
+				calculate_horizontal(*w, costs, dimx, min_costs, paths, bends);
+		  else calculate_vertical(*w, costs, dimx, min_costs, paths, bends);
+		}
+	
+	  int minCost = std::numeric_limits<int>::max();
+		int index;
+		for (int i = 0; i < num_threads; i++) {
+			if (cost[i] < minCost) {
+				minCost = cost[i];
+				index = i;
+			}
+		}
+		best_path = paths[index];
+		best_path_counter = bends[index];
+
 		std::random_device rd;
 		std::mt19937 generator(rd());
 		std::uniform_int_distribution<int> uni(0,abs(w->c1[0] - w->c2[0]) + abs(w->c1[1] - w->c2[1]) + 1);
@@ -262,6 +328,8 @@ int main(int argc, const char *argv[])
     wires[i].x_counter = 0;
     wires[i].y_counter = 0;
     wires[i].path = 0;
+		wires[i].xpaths = abs(c1[0] - c2[0]);
+		wires[i].ypaths = abs(c1[1] - c2[1]);
     i++;
   }
 

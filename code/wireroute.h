@@ -15,6 +15,8 @@ typedef struct
   int x_counter;
   int y_counter;
   bool path;
+	int xpaths;
+	int ypaths;
 } wire_t;
 
 typedef int cost_t;
