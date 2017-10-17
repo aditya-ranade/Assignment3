@@ -158,9 +158,9 @@ void check_paths(wire_t w, cost_t *costs, int dimx) {
 	int curr_cost = INT_MAX;
 	int best_path = 0;
 	int bend = 0;
-	//int *min_costs = (int *)malloc(sizeof(int)*w.num_paths);
-  //int *w_path = (int *)malloc(sizeof(int)*w.num_paths);
-  //int *bends = (int *)malloc(sizeof(int)*w.num_paths);
+	int *min_costs = (int *)malloc(sizeof(int)*w.num_paths);
+  int *w_path = (int *)malloc(sizeof(int)*w.num_paths);
+  int *bends = (int *)malloc(sizeof(int)*w.num_paths);
 	int i = 0;
 	int chunk = 4;
 	omp_set_num_threads(64);
@@ -172,16 +172,16 @@ void check_paths(wire_t w, cost_t *costs, int dimx) {
 		if (i < num_paths_x) {
 			w.bend = paths[i]; 
 			w.path = 0;
-//			curr_cost = traverse_path(w, costs, dimx, false, 1);
+			curr_cost = traverse_path(w, costs, dimx, false, 1);
 		}
 		else {
 			w.path = 1;
 			w.bend = paths[i];
-	//		curr_cost = traverse_path(w, costs, dimx, false, 1);
+	    curr_cost = traverse_path(w, costs, dimx, false, 1);
 		}
-		//min_costs[i] = curr_cost;
-		//w_path[i] = w.path;
-		//bends[i] = w.bend;
+		min_costs[i] = curr_cost;
+		w_path[i] = w.path;
+		bends[i] = w.bend;
 	}
 }
 	
@@ -250,7 +250,7 @@ void fill_costs(cost_t *costs, int dimx, int dimy, wire_t *wires, int num_of_wir
 		int best_path;
 		int num_threads = 128;
 		wire_t *w = &wires[i];
-		//if (!is1) traverse_path(*w, costs, dimx, true, -1);
+		traverse_path(*w, costs, dimx, true, -1);
 		int min_costs[128]; 
 		int paths[128];
 		int bends[128];
@@ -266,16 +266,9 @@ void fill_costs(cost_t *costs, int dimx, int dimy, wire_t *wires, int num_of_wir
 		int choice = random(generator);
 		
 		
-		//if (choice == 0) {
+		if (choice == 0) {
 			
-			clock_t start = clock();	
 			check_paths(*w, costs, dimx);
-					//start = clock() - start;
-			//double time_taken = double(start)/CLOCKS_PER_SEC;
-			//fprintf(stdout, "time path checking = %f \n", time_taken); 
-			start = clock() - start;
-			double time_taken = double(start)/CLOCKS_PER_SEC;
-			fprintf(stdout, "time routes = %f \n", time_taken); 
 	
 
 			int minCost = std::numeric_limits<int>::max();
@@ -290,18 +283,13 @@ void fill_costs(cost_t *costs, int dimx, int dimy, wire_t *wires, int num_of_wir
 			best_path_counter = bends[index];
 			w->path = best_path;
 			w->bend = best_path_counter;
-		//}
-		//else {
-		//	set_random_path(w);
-		//}
+	}
+		else {
+			set_random_path(w);
+		}
 		
-		//clock_t start = clock(); 
-		//set_random_path(w);
-		//start = clock() - start;
-		//double time_taken = double(start)/CLOCKS_PER_SEC;
-		//fprintf(stdout, "time random = %f \n", time_taken); 
 	
-		//traverse_path(*w, costs, dimx, true, 1);
+		traverse_path(*w, costs, dimx, true, 1);
 	}
 }
 
@@ -387,9 +375,9 @@ int main(int argc, const char *argv[])
   /* Initialize additional data structures needed in the algorithm
    * here if you feel it's needed. */
 	
-	//for (int i = 0; i < num_of_wires; i++) {
- //		traverse_path(wires[i], costs, dim_x, true, 1);
-	//}
+	for (int i = 0; i < num_of_wires; i++) {
+		traverse_path(wires[i], costs, dim_x, true, 1);
+	}
 
 
   error = 0;
@@ -413,7 +401,7 @@ int main(int argc, const char *argv[])
      * Feel free to structure the algorithm into different functions
      * Don't use global variables.
      * Use OpenMP to parallelize the algorithm.
-     * You should really implement as much of this (if not all of it) in
+  `   * You should really implement as much of this (if not all of it) in
      * helper functions. */
 	for (int i = 0; i < 5; i++) {
 		clock_t start = clock();
