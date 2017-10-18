@@ -155,13 +155,12 @@ void check_paths(wire_t w, cost_t *costs, int dimx, int *min_costs, int *w_paths
 	int curr_cost = INT_MAX;
 	int best_path = 0;
 	int bend = 0;
-	int i = 0;
 	int chunk = 4;
 	wire_t *wire;
-	
+	int i;	
 
-#pragma omp parallel for schedule(dynamic) num_threads(64) shared(min_costs, w_paths, bends)
-	for (; i < w.num_paths; i++) {
+#pragma omp parallel for schedule(guided) num_threads(64) private(w, i, curr_cost) shared(min_costs, w_paths, bends, paths)
+	for (i = 0; i < w.num_paths; i++) {
 		if (i < num_paths_x) {
 			w.bend = paths[i]; 
 			w.path = 0;
@@ -172,9 +171,12 @@ void check_paths(wire_t w, cost_t *costs, int dimx, int *min_costs, int *w_paths
 			w.bend = paths[i];
 	  	curr_cost = traverse_path(w, costs, dimx, false, 1);
 		}
+#pragma omp critical
+		{
 		min_costs[i] = curr_cost;
 		w_paths[i] = w.path;
 		bends[i] = w.bend;
+	}
 	}
 }
 	
@@ -256,7 +258,7 @@ void fill_costs(cost_t *costs, int dimx, int dimy, wire_t *wires, int num_of_wir
 		std::random_device rd;
 		std::mt19937 generator(rd());
 		std::uniform_int_distribution<int> random(0, 2);
-		int choice = random(generator);
+		int choice = 0;
 		
 		
 		if (choice == 0) {
@@ -280,7 +282,7 @@ void fill_costs(cost_t *costs, int dimx, int dimy, wire_t *wires, int num_of_wir
 		else {
 			set_random_path(w);
 		}
-		traverse_path(*w, costs, dimx, true, 1);
+		//traverse_path(*w, costs, dimx, true, 1);
 	}
 }
 
@@ -376,6 +378,8 @@ int main(int argc, const char *argv[])
 
   auto compute_start = Clock::now();
   double compute_time = 0;
+
+
 #ifdef RUN_MIC /* Use RUN_MIC to distinguish between the target of compilation */
 
   /* This pragma means we want the code in the following block be executed in
@@ -392,11 +396,12 @@ int main(int argc, const char *argv[])
      * Use OpenMP to parallelize the algorithm.
      * You should really implement as much of this (if not all of it) in
      * helper functions. */
+	
 	for (int i = 0; i < 5; i++) {
 
 		fill_costs(costs, dim_x, dim_y, wires, num_of_wires, i==0);	
+	}  
 	}
-  }
 
   compute_time += duration_cast<dsec>(Clock::now() - compute_start).count();
   printf("Computation Time: %lf.\n", compute_time);
