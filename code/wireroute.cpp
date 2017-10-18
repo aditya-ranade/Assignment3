@@ -62,26 +62,33 @@ static void show_help(const char *program_path)
     printf("\t-i <SA_iters>\n");
 }
 
-int increment_cost_x(cost_t *costs, int x1, int x2, int y, int dim_x, bool write, int sum) {
+int increment_cost_x(cost_t *costs, int x1, int x2, int y, int dim_x, int dim_y, bool write, int sum) {
 	int max_cost = 0;
 	int multiplier = 1;
+	int val = 0;
 	if (x1 > x2) multiplier = -1;
 	while (x1 != x2) {
+		if ((y*dim_x + x1) < (dim_x * dim_y)) {
+		
 		if (write) costs[y*dim_x + x1] += sum;
-		int val = costs[y*dim_x + x1] + sum;
+		val = costs[y*dim_x + x1] + sum;
+		}
 		if (val > max_cost) max_cost = val;
 		x1 += multiplier;
 	}
 	return max_cost;
 }
 
-int increment_cost_y(cost_t *costs, int y1, int y2, int x, int dim_x, bool write, int sum) {
+int increment_cost_y(cost_t *costs, int y1, int y2, int x, int dim_x, int dim_y, bool write, int sum) {
 	int max_cost = 0;
 	int multiplier = 1;
+	int val = 0;
 	if (y1 > y2) multiplier = -1;
 	while (y1 != y2) {
+		if ((y1*dim_x + x) < (dim_x * dim_y)) {
 		if (write) costs[y1*dim_x + x] += sum;
-		int val = costs[y1*dim_x + x] + sum; 
+		val = costs[y1*dim_x + x] + sum; 
+		}
 		if (val > max_cost) max_cost = val;
 		y1 += multiplier;
 	}
@@ -93,24 +100,26 @@ int max(int x, int y) {
 }
 
 
-int traverse_path(wire_t w, cost_t *costs, int dim_x, bool write, int sum) {
+int traverse_path(wire_t w, cost_t *costs, int dim_x,int dim_y, bool write, int sum) {
 	clock_t start = clock();
-	int cost1, cost2, cost3, cost4;
+	int cost1 = 0; int cost2 = 0; int cost3 = 0; int cost4 = 0;
 	int *c1 = w.c1;
 	int *c2 = w.c2;	
 	if (w.path == 0) {
-		cost1 = increment_cost_x(costs, c1[0], w.bend, c1[1], dim_x, write, sum);
-		cost2 = increment_cost_y(costs, c1[1], c2[1], w.bend, dim_x, write, sum);
-		cost3 = increment_cost_x(costs, w.bend, c2[0], c2[1], dim_x, write, sum);
+		cost1 = increment_cost_x(costs, c1[0], w.bend, c1[1], dim_x, dim_y,  write, sum);
+		cost2 = increment_cost_y(costs, c1[1], c2[1], w.bend, dim_x, dim_y, write, sum);
+		cost3 = increment_cost_x(costs, w.bend, c2[0], c2[1], dim_x, dim_y, write, sum);
 	}
 
 	else {
-		cost1 = increment_cost_y(costs, c1[1], w.bend, c1[0], dim_x, write, sum);
-		cost2 = increment_cost_x(costs, c1[0], c2[0], w.bend, dim_x, write, sum);
-		cost3 = increment_cost_y(costs, w.bend, c2[1], c2[0], dim_x, write, sum);
+		cost1 = increment_cost_y(costs, c1[1], w.bend, c1[0], dim_x, dim_y, write, sum);
+		cost2 = increment_cost_x(costs, c1[0], c2[0], w.bend, dim_x, dim_y, write, sum);
+		cost3 = increment_cost_y(costs, w.bend, c2[1], c2[0], dim_x, dim_y, write, sum);
 	}
+	if ((c2[1] * dim_x + c2[0]) < (dim_x * dim_y)) {
 	cost4 = costs[c2[1]*dim_x + c2[0]] + sum;	
 	if (write) costs[c2[1]*dim_x + c2[0]] = cost4;
+	}
 	return max(max(max(cost1, cost2), cost3), cost4);
 
 }
@@ -142,7 +151,7 @@ void all_paths(int x1, int y1, int x2, int y2, int *res) {
 	}
 }
 
-void check_paths(wire_t w, cost_t *costs, int dimx, int *min_costs, int *w_paths, int *bends) {
+void check_paths(wire_t w, cost_t *costs, int dimx, int dimy,  int *min_costs, int *w_paths, int *bends) {
 	int num_paths_x = abs(w.c1[0] - w.c2[0]);
 	int num_paths_y = abs(w.c1[1] - w.c2[1]);
 	int x_multiplier = (w.c1[0] > w.c2[0]) ? -1 : 1;
@@ -150,7 +159,8 @@ void check_paths(wire_t w, cost_t *costs, int dimx, int *min_costs, int *w_paths
 
 	int *paths = (int *)malloc(sizeof(int)*w.num_paths);
 	all_paths(w.c1[0], w.c1[1], w.c2[0], w.c2[1], paths);
-	
+
+		
 	int minCost = INT_MAX;
 	int curr_cost = INT_MAX;
 	int best_path = 0;
@@ -162,22 +172,27 @@ void check_paths(wire_t w, cost_t *costs, int dimx, int *min_costs, int *w_paths
 #pragma omp parallel for schedule(guided) num_threads(64) private(w, i, curr_cost) shared(min_costs, w_paths, bends, paths)
 	for (i = 0; i < w.num_paths; i++) {
 		if (i < num_paths_x) {
-			w.bend = paths[i]; 
 			w.path = 0;
-			curr_cost = traverse_path(w, costs, dimx, false, 1);
+			w.bend = w.c1[0] + (x_multiplier * (i + 1)); 
+			curr_cost = traverse_path(w, costs, dimx, dimy, false, 1);
 		}
 		else {
 			w.path = 1;
-			w.bend = paths[i];
-	  	curr_cost = traverse_path(w, costs, dimx, false, 1);
+			w.bend = w.c1[1] + (y_multiplier * (i - num_paths_x + 1));
+	  	curr_cost = traverse_path(w, costs, dimx,dimy, false, 1);
 		}
-#pragma omp critical
-		{
 		min_costs[i] = curr_cost;
 		w_paths[i] = w.path;
 		bends[i] = w.bend;
 	}
+#pragma omp barrier
+	for (int i = 0; i < w.num_paths; i++) {
+		fprintf(stdout, "bends = %d ", bends[i]);
 	}
+
+
+
+
 }
 	
 	
@@ -240,12 +255,14 @@ void set_random_path(wire_t *w) {
 }
 
 void fill_costs(cost_t *costs, int dimx, int dimy, wire_t *wires, int num_of_wires, bool is1) {
+	fprintf(stdout, "dimx = %d, dimy = %d\n", dimx, dimy);
+	
 	for (int i = 0; i < num_of_wires; i++) {
 		int best_path_counter;
 		int best_path;
 		int num_threads = 128;
 		wire_t *w = &wires[i];
-		traverse_path(*w, costs, dimx, true, -1);
+		traverse_path(*w, costs, dimx,dimy, true, -1);
 		int *min_costs = (int *)malloc(sizeof(int)*w->num_paths); 
 		int *w_paths = (int *) malloc(sizeof(int)*w->num_paths);
 		int *bends = (int *)malloc(sizeof(int)*w->num_paths);
@@ -263,12 +280,12 @@ void fill_costs(cost_t *costs, int dimx, int dimy, wire_t *wires, int num_of_wir
 		
 		if (choice == 0) {
 			
-			check_paths(*w, costs, dimx, min_costs, w_paths, bends);
+			check_paths(*w, costs, dimx,dimy, min_costs, w_paths, bends);
 	
 
 			int minCost = std::numeric_limits<int>::max();
 			int index;
-			for (int i = 0; i < num_threads; i++) {
+			for (int i = 0; i < w->num_paths; i++) {
 				if (min_costs[i] < minCost) {
 					minCost = min_costs[i];
 					index = i;
@@ -276,13 +293,14 @@ void fill_costs(cost_t *costs, int dimx, int dimy, wire_t *wires, int num_of_wir
 			}
 			best_path = w_paths[index];
 			best_path_counter = bends[index];
-			w->path = best_path;
-			w->bend = best_path_counter;
+			//fprintf(stdout, "cost = %d, path = %d, bend = %d \n", minCost, best_path, best_path_counter);
+			w->path = 0;
+			w->bend = 0;
 		}
 		else {
 			set_random_path(w);
 		}
-		//traverse_path(*w, costs, dimx, true, 1);
+		traverse_path(*w, costs, dimx, dimy, true, 1);
 	}
 }
 
@@ -369,7 +387,7 @@ int main(int argc, const char *argv[])
    * here if you feel it's needed. */
 	
 	for (int i = 0; i < num_of_wires; i++) {
-		traverse_path(wires[i], costs, dim_x, true, 1);	
+		traverse_path(wires[i], costs, dim_x, dim_y, true, 1);	
   }
   error = 0;
 
