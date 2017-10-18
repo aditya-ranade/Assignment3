@@ -100,26 +100,21 @@ int max(int x, int y) {
 }
 
 
-int traverse_path(wire_t w, cost_t *costs, int dim_x,int dim_y, bool write, int sum) {
-	clock_t start = clock();
+int traverse_path(int x1, int y1, int x2, int y2, int path, int bend, cost_t *costs, int dim_x,int dim_y, bool write, int sum) {
 	int cost1 = 0; int cost2 = 0; int cost3 = 0; int cost4 = 0;
-	int *c1 = w.c1;
-	int *c2 = w.c2;	
-	if (w.path == 0) {
-		cost1 = increment_cost_x(costs, c1[0], w.bend, c1[1], dim_x, dim_y,  write, sum);
-		cost2 = increment_cost_y(costs, c1[1], c2[1], w.bend, dim_x, dim_y, write, sum);
-		cost3 = increment_cost_x(costs, w.bend, c2[0], c2[1], dim_x, dim_y, write, sum);
+	if (path == 0) {
+		cost1 = increment_cost_x(costs, x1, bend, y1, dim_x, dim_y,  write, sum);
+		cost2 = increment_cost_y(costs, y1, y2, bend, dim_x, dim_y, write, sum);
+		cost3 = increment_cost_x(costs, bend, x2, y2, dim_x, dim_y, write, sum);
 	}
 
 	else {
-		cost1 = increment_cost_y(costs, c1[1], w.bend, c1[0], dim_x, dim_y, write, sum);
-		cost2 = increment_cost_x(costs, c1[0], c2[0], w.bend, dim_x, dim_y, write, sum);
-		cost3 = increment_cost_y(costs, w.bend, c2[1], c2[0], dim_x, dim_y, write, sum);
+		cost1 = increment_cost_y(costs, y1, bend, x1, dim_x, dim_y, write, sum);
+		cost2 = increment_cost_x(costs, x1, x2, bend, dim_x, dim_y, write, sum);
+		cost3 = increment_cost_y(costs, bend, y2, x2, dim_x, dim_y, write, sum);
 	}
-	if ((c2[1] * dim_x + c2[0]) < (dim_x * dim_y)) {
-	cost4 = costs[c2[1]*dim_x + c2[0]] + sum;	
-	if (write) costs[c2[1]*dim_x + c2[0]] = cost4;
-	}
+	cost4 = costs[y2*dim_x + x2] + sum;	
+	if (write) costs[y2 + x2] = cost4;
 	return max(max(max(cost1, cost2), cost3), cost4);
 
 }
@@ -151,48 +146,38 @@ void all_paths(int x1, int y1, int x2, int y2, int *res) {
 	}
 }
 
-void check_paths(wire_t w, cost_t *costs, int dimx, int dimy,  int *min_costs, int *w_paths, int *bends) {
-	int num_paths_x = abs(w.c1[0] - w.c2[0]);
-	int num_paths_y = abs(w.c1[1] - w.c2[1]);
-	int x_multiplier = (w.c1[0] > w.c2[0]) ? -1 : 1;
-	int y_multiplier = (w.c1[1] > w.c2[1]) ? -1 : 1;
+void check_paths(int x1, int y1, int x2, int y2, cost_t *costs, int dimx, int dimy,  int *min_costs)  {
+	int num_paths_x = abs(x1 - x2);
+	int num_paths_y = abs(y1 - y2);
+	int num_paths = num_paths_x + num_paths_y;
+	int x_multiplier = (x1 > x2) ? -1 : 1;
+	int y_multiplier = (y1 > y2) ? -1 : 1;
 
-	int *paths = (int *)malloc(sizeof(int)*w.num_paths);
-	all_paths(w.c1[0], w.c1[1], w.c2[0], w.c2[1], paths);
 
 		
 	int minCost = INT_MAX;
 	int curr_cost = INT_MAX;
 	int best_path = 0;
 	int bend = 0;
+	int path;
 	int chunk = 4;
-	wire_t *wire;
 	int i;	
 
-#pragma omp parallel for schedule(guided) num_threads(64) private(w, i, curr_cost) shared(min_costs, w_paths, bends, paths)
-	for (i = 0; i < w.num_paths; i++) {
+#pragma omp parallel for schedule(guided) num_threads(64) private(i, curr_cost) shared(min_costs)
+	for (i = 0; i < num_paths; i++) {
 		if (i < num_paths_x) {
-			w.path = 0;
-			w.bend = w.c1[0] + (x_multiplier * (i + 1)); 
-			curr_cost = traverse_path(w, costs, dimx, dimy, false, 1);
+			path = 0;
+			bend = x1 + (x_multiplier * (i + 1)); 
+			curr_cost = traverse_path(x1, y1, x2, y2, path, bend, costs, dimx, dimy, false, 1);
 		}
 		else {
-			w.path = 1;
-			w.bend = w.c1[1] + (y_multiplier * (i - num_paths_x + 1));
-	  	curr_cost = traverse_path(w, costs, dimx,dimy, false, 1);
+			path = 1;
+			bend = y1 + (y_multiplier * (i - num_paths_x + 1));
+	  	curr_cost = traverse_path(x1, y1, x2, y2, path, bend, costs, dimx,dimy, false, 1);
 		}
 		min_costs[i] = curr_cost;
-		w_paths[i] = w.path;
-		bends[i] = w.bend;
 	}
 #pragma omp barrier
-	for (int i = 0; i < w.num_paths; i++) {
-		fprintf(stdout, "bends = %d ", bends[i]);
-	}
-
-
-
-
 }
 	
 	
@@ -262,25 +247,24 @@ void fill_costs(cost_t *costs, int dimx, int dimy, wire_t *wires, int num_of_wir
 		int best_path;
 		int num_threads = 128;
 		wire_t *w = &wires[i];
-		traverse_path(*w, costs, dimx,dimy, true, -1);
+		traverse_path(w->c1[0], w->c1[1], w->c2[0], w->c2[1], w->path, w->bend, costs, dimx,dimy, true, -1);
 		int *min_costs = (int *)malloc(sizeof(int)*w->num_paths); 
-		int *w_paths = (int *) malloc(sizeof(int)*w->num_paths);
-		int *bends = (int *)malloc(sizeof(int)*w->num_paths);
 	
 		
 		
-		omp_set_num_threads(num_threads);
 
 		int chunk_size = w->num_paths/num_threads + 1;
 		std::random_device rd;
 		std::mt19937 generator(rd());
 		std::uniform_int_distribution<int> random(0, 2);
 		int choice = 0;
-		
-		
+	  int num_paths_x = abs(w->c1[0] - w->c2[0]);	
+		int x_multiplier = (w->c1[0] > w->c2[0]) ? -1 : 1;
+		int y_multiplier = (w->c1[1] > w->c2[1]) ? -1 : 1;
+	
 		if (choice == 0) {
 			
-			check_paths(*w, costs, dimx,dimy, min_costs, w_paths, bends);
+			check_paths(w->c1[0], w->c1[1], w->c2[0], w->c2[1], costs, dimx,dimy, min_costs);
 	
 
 			int minCost = std::numeric_limits<int>::max();
@@ -291,16 +275,22 @@ void fill_costs(cost_t *costs, int dimx, int dimy, wire_t *wires, int num_of_wir
 					index = i;
 				}
 			}
-			best_path = w_paths[index];
-			best_path_counter = bends[index];
+			if (index < num_paths_x) {
+				 w->path = 0;
+				 w->bend = w->c1[0] + (x_multiplier *(index+ 1));
+			}
+
+			else {
+				w->path = 1;
+				w->bend = w->c1[1] + (y_multiplier * (index - num_paths_x + 1));
+
+			}
 			//fprintf(stdout, "cost = %d, path = %d, bend = %d \n", minCost, best_path, best_path_counter);
-			w->path = 0;
-			w->bend = 0;
 		}
 		else {
 			set_random_path(w);
 		}
-		traverse_path(*w, costs, dimx, dimy, true, 1);
+		traverse_path(w->c1[0], w->c1[1], w->c2[0], w->c2[1], w->path, w->bend, costs, dimx, dimy, true, 1);
 	}
 }
 
@@ -387,7 +377,7 @@ int main(int argc, const char *argv[])
    * here if you feel it's needed. */
 	
 	for (int i = 0; i < num_of_wires; i++) {
-		traverse_path(wires[i], costs, dim_x, dim_y, true, 1);	
+		traverse_path(wires[i].c1[0], wires[i].c1[1], wires[i].c2[0], wires[i].c2[1], wires[i].path, wires[i].bend, costs, dim_x, dim_y, true, 1);	
   }
   error = 0;
 
@@ -403,8 +393,8 @@ int main(int argc, const char *argv[])
   /* This pragma means we want the code in the following block be executed in
    * Xeon Phi.
    */
-#pragma offload target(mic) \
-  inout(wires: length(num_of_wires) INOUT)    \
+#pragma offload target(mic)  \
+	inout(wires: length(num_of_wires) INOUT)    \
   inout(costs: length(dim_x*dim_y) INOUT)
 #endif
   {
