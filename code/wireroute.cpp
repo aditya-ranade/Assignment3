@@ -157,11 +157,10 @@ void check_paths(wire_t w, cost_t *costs, int dimx, int *min_costs, int *w_paths
 	int bend = 0;
 	int i = 0;
 	int chunk = 4;
-	omp_set_num_threads(64);
 	wire_t *wire;
 	
 
-#pragma omp parallel for private(i, w, curr_cost) schedule(dynamic,chunk)
+#pragma omp parallel for schedule(dynamic) num_threads(64) shared(min_costs, w_paths, bends)
 	for (; i < w.num_paths; i++) {
 		if (i < num_paths_x) {
 			w.bend = paths[i]; 
