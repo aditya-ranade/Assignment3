@@ -2,7 +2,7 @@
 # generate jobs in batch
 
 threads=(64) # The number of threads 
-inputs=(timeinput/easy_4096.txt) # The name of the input files
+inputs=(timeinput/hard_4096.txt) # The name of the input files
 rm -f *.job
 
 for f in ${inputs[@]}
